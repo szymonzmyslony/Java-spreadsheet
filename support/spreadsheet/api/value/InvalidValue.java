@@ -12,6 +12,8 @@ public final class InvalidValue implements Value {
         this.expression = expression;
     }
 
+
+
     @Override
     public void visit(ValueVisitor visitor) {
         visitor.visitInvalid(expression);
