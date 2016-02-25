@@ -17,9 +17,18 @@ public class Cell implements Observer<Cell> {
     private Spreadsheet spreadsheet;
     private String expression = "";
     private Value value = null;
-    private Set<Cell> setReferences= new HashSet();
-    private Set<Observer<Cell>> changedRefereneces = new HashSet<>();
+    private Set<Cell> dependsOn = new HashSet();
+    private Set<Observer<Cell>> observers = new HashSet<>();
 
+    public Cell(CellLocation cellLocation, Spreadsheet spreadsheet) {
+        this.cellLocation = cellLocation;
+        this.spreadsheet = spreadsheet;
+
+    }
+
+    public Set<Cell> getDependsOn() {
+        return dependsOn;
+    }
 
     @Override
     public boolean equals(Object o) {
@@ -40,12 +49,6 @@ public class Cell implements Observer<Cell> {
         return result;
     }
 
-    public Cell(CellLocation cellLocation, Spreadsheet spreadsheet) {
-        this.cellLocation = cellLocation;
-        this.spreadsheet = spreadsheet;
-
-    }
-
     public Value getValue() {
         return value;
     }
@@ -59,28 +62,45 @@ public class Cell implements Observer<Cell> {
     }
 
     public void setExpression(String expression) {
-        setReferences.clear();
-        this.expression = expression;
-        value = new InvalidValue(expression);
-        spreadsheet.add(this);
-        for (CellLocation l : (ExpressionUtils.getReferencedLocations(expression))){
-            Cell c = new Cell(l,spreadsheet);
-            setReferences.add(c);
+        for (Cell c : dependsOn) {
+            c.removeObserver(this);
+            dependsOn.remove(c);
         }
-        changedRefereneces.notifyAll();
+        this.expression = expression;
+        setValue(new InvalidValue(expression));
+        spreadsheet.add(this);
+        Set<CellLocation> newLocations = ExpressionUtils.getReferencedLocations(expression);
+        for (CellLocation location : newLocations) {
+            Cell cell;
+            if (spreadsheet.isInMap(location)) {
+                dependsOn.add(spreadsheet.getCellMap().get(location));
+            } else {
+                cell = new Cell(location, spreadsheet);
+                //cell.observers.add(this);
+                spreadsheet.addtoMap(location, cell);
+                dependsOn.add(cell);
+            }
+        }
+        for (Observer<Cell> cell : observers) {
+            cell.update(this);
+        }
+
+
     }
 
    private void removeObserver(Observer<Cell> observer){
-
+       observers.remove(observer);
    }
 
 
     @Override
     public void update(Cell changed) {
-        if (!spreadsheet.isIn(changed)){
-            spreadsheet.recompute();
-            changed.setValue(new InvalidValue(changed.expression));
-            changed.changedRefereneces.notifyAll();
+        if (!spreadsheet.isIn(this)) {
+            spreadsheet.add(this);
+            this.setValue(new InvalidValue(this.expression));
+            for (Observer<Cell> cell : observers) {
+                cell.update(this);
+            }
 
         }
 

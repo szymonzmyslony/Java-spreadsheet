@@ -2,24 +2,36 @@ package spreadsheet;
 
 import spreadsheet.api.CellLocation;
 import spreadsheet.api.SpreadsheetInterface;
+import spreadsheet.api.value.InvalidValue;
+import spreadsheet.api.value.LoopValue;
 import spreadsheet.api.value.StringValue;
 import spreadsheet.api.value.Value;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class Spreadsheet implements SpreadsheetInterface {
     private Map<CellLocation, Cell> cellMap= new HashMap();
-    private Set<Cell> cellSet = new HashSet<>();
+    private Set<Cell> toRecompute = new HashSet<>();
 
     public void add(Cell cell){
-        cellSet.add(cell);
+        toRecompute.add(cell);
+    }
+
+
+    public void addtoMap(CellLocation l, Cell cell) {
+        cellMap.put(l, cell);
+    }
+
+    public Map<CellLocation, Cell> getCellMap() {
+        return cellMap;
     }
 
     public boolean isIn(Cell cell){
-        return cellSet.contains(cell);
+        return toRecompute.contains(cell);
+    }
+
+    public boolean isInMap(CellLocation l) {
+        return cellMap.containsKey(l);
     }
 
 
@@ -54,13 +66,71 @@ public class Spreadsheet implements SpreadsheetInterface {
 
     @Override
     public void recompute() {
-        for (Cell c : cellSet){
+        Iterator<Cell> iterator = toRecompute.iterator();
+        while (iterator.hasNext()) {
+            Cell c = iterator.next();
+            recomputeCell(c);
+            toRecompute.remove(c);
+            if (c.getValue().equals(LoopValue.INSTANCE)) {
 
-            c.setValue(new StringValue(c.getExpression()));
-            cellSet.remove(c);
+            } else if (dependsOnLoop(c)) {
+                c.setValue(new InvalidValue(c.getExpression()));
+            } else {
+                c.setValue(new StringValue(c.getExpression()));
+            }
+        }
+    }
+
+    private boolean dependsOnLoop(Cell cell) {
+        for (Cell c : cell.getDependsOn()) {
+            if (c.getValue().equals(LoopValue.INSTANCE)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void recomputeCell(Cell c) {
+        checkLoops(c, new LinkedHashSet<Cell>());
+
+
+    }
+
+
+    private void checkLoops(Cell c, LinkedHashSet<Cell> cellSeen) {
+        if (cellSeen.contains(c)) {
+            markAsLoop(c, cellSeen);
+        } else {
+            cellSeen.add(c);
+            for (Cell cell : c.getDependsOn()) {
+                checkLoops(cell, cellSeen);
+            }
+            cellSeen.remove(c);
+
+        }
+    }
+
+
+    private void markAsLoop(Cell startCell, LinkedHashSet<Cell> cells) {
+        toRecompute.removeAll(cells);
+        boolean flag = false;
+        Iterator<Cell> iterator = cells.iterator();
+        while (iterator.hasNext()) {
+            Cell cell = iterator.next();
+            if (cell.equals(startCell)) {
+                flag = true;
+            }
+            if (flag) {
+                cell.setValue(LoopValue.INSTANCE);
+            }
 
         }
 
 
     }
-}
+
+
+
+    }
+
