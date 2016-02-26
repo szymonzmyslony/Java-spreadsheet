@@ -1,19 +1,20 @@
 package spreadsheet;
 
 import spreadsheet.api.CellLocation;
+import spreadsheet.api.ExpressionUtils;
 import spreadsheet.api.SpreadsheetInterface;
 import spreadsheet.api.value.InvalidValue;
 import spreadsheet.api.value.LoopValue;
-import spreadsheet.api.value.StringValue;
 import spreadsheet.api.value.Value;
+import spreadsheet.api.value.ValueVisitor;
 
 import java.util.*;
 
 public class Spreadsheet implements SpreadsheetInterface {
-    private Map<CellLocation, Cell> cellMap= new HashMap();
+    private Map<CellLocation, Cell> cellMap = new HashMap();
     private Set<Cell> toRecompute = new HashSet<>();
 
-    public void add(Cell cell){
+    public void add(Cell cell) {
         toRecompute.add(cell);
     }
 
@@ -26,7 +27,7 @@ public class Spreadsheet implements SpreadsheetInterface {
         return cellMap;
     }
 
-    public boolean isIn(Cell cell){
+    public boolean isIn(Cell cell) {
         return toRecompute.contains(cell);
     }
 
@@ -35,25 +36,21 @@ public class Spreadsheet implements SpreadsheetInterface {
     }
 
 
-
-
-   
-
     @Override
     public String getExpression(CellLocation location) {
         Cell temp = cellMap.get(location);
-        return temp==null?null:temp.getExpression();
-            }
+        return temp == null ? null : temp.getExpression();
+    }
 
 
     @Override
     public void setExpression(CellLocation location, String expression) {
         Cell temp = cellMap.get(location);
 
-            Cell cell = new Cell(location, this);
-            cell.setExpression(expression);
-            cell.setValue(new StringValue(expression));
-            cellMap.put(location, cell);
+        Cell cell = new Cell(location, this);
+        cell.setExpression(expression);
+        //  cell.setValue(new StringValue(expression));
+        cellMap.put(location, cell);
 
 
     }
@@ -61,7 +58,7 @@ public class Spreadsheet implements SpreadsheetInterface {
     @Override
     public Value getValue(CellLocation location) {
         Cell temp = cellMap.get(location);
-        return temp==null?null:temp.getValue();
+        return temp == null ? null : temp.getValue();
     }
 
     @Override
@@ -76,15 +73,19 @@ public class Spreadsheet implements SpreadsheetInterface {
             } else if (dependsOnLoop(c)) {
                 c.setValue(new InvalidValue(c.getExpression()));
             } else {
-                c.setValue(new StringValue(c.getExpression()));
+                // c.setValue(new StringValue(c.getExpression()));
             }
         }
     }
 
     private boolean dependsOnLoop(Cell cell) {
-        for (Cell c : cell.getDependsOn()) {
-            if (c.getValue().equals(LoopValue.INSTANCE)) {
+        Iterator<Cell> iterator = cell.getDependsOn().iterator();
+        while (iterator.hasNext()) {
+            Cell c = iterator.next();
+            if (c.getValue().equals(LoopValue.INSTANCE) || c.getValue().equals(new InvalidValue(c.getExpression()))) {
+                System.out.println(c.toString() + "depends on loop");
                 return true;
+
             }
         }
 
@@ -92,9 +93,71 @@ public class Spreadsheet implements SpreadsheetInterface {
     }
 
     private void recomputeCell(Cell c) {
+        Deque<Cell> quue = new ArrayDeque<>();
         checkLoops(c, new LinkedHashSet<Cell>());
+        if (!(c.getValue().equals(LoopValue.INSTANCE) || dependsOnLoop(c))) {
+            quue.add(c);
+
+            while (!quue.isEmpty()) {
+                Cell current = quue.getFirst();
+                Iterator<Cell> iterator = current.getDependsOn().iterator();
+                while (iterator.hasNext()) {
+                    Cell cell = iterator.next();
+                    if (isIn(cell)) {
+                        quue.addFirst(cell);
+                        recomputeCell(cell);
+                        //quue.addLast(current);
+                    }
+
+                }
+                quue.addLast(current);
+                calculateCellValue(current);
+                toRecompute.remove(current);
+            }
+        }
+    }
+
+    private void calculateCellValue(Cell cell) {
+        Map<CellLocation, Double> values = new HashMap<>();
+        Iterator<Cell> iterator = cell.getDependsOn().iterator();
+        while (iterator.hasNext()) {
+            Cell c = iterator.next();
+            final boolean[] refbool = new boolean[1];
+            final double[] ref = new double[1];
+            refbool[0] = false;
+
+            c.getValue().visit(new ValueVisitor() {
+                @Override
+                public void visitDouble(double value) {
+                    refbool[0] = true;
+                    ref[0] = value;
+
+                }
+
+                @Override
+                public void visitLoop() {
+
+                }
+
+                @Override
+                public void visitString(String expression) {
+
+                }
+
+                @Override
+                public void visitInvalid(String expression) {
 
 
+                }
+            });
+            if (refbool[0]) {
+                values.put(c.getCellLocation(), ref[0]);
+
+            }
+        }
+
+
+        ExpressionUtils.computeValue(cell.getExpression(), values);
     }
 
 
@@ -131,6 +194,5 @@ public class Spreadsheet implements SpreadsheetInterface {
     }
 
 
-
-    }
+}
 

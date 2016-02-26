@@ -30,6 +30,10 @@ public class Cell implements Observer<Cell> {
         return dependsOn;
     }
 
+    public CellLocation getCellLocation() {
+        return cellLocation;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -76,7 +80,7 @@ public class Cell implements Observer<Cell> {
                 dependsOn.add(spreadsheet.getCellMap().get(location));
             } else {
                 cell = new Cell(location, spreadsheet);
-                //cell.observers.add(this);
+                cell.observers.add(this);
                 spreadsheet.addtoMap(location, cell);
                 dependsOn.add(cell);
             }
@@ -95,7 +99,7 @@ public class Cell implements Observer<Cell> {
 
     @Override
     public void update(Cell changed) {
-        if (!spreadsheet.isIn(this)) {
+        if (!spreadsheet.isIn(changed)) {
             spreadsheet.add(this);
             this.setValue(new InvalidValue(this.expression));
             for (Observer<Cell> cell : observers) {
