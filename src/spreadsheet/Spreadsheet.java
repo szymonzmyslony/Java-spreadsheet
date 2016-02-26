@@ -3,7 +3,6 @@ package spreadsheet;
 import spreadsheet.api.CellLocation;
 import spreadsheet.api.ExpressionUtils;
 import spreadsheet.api.SpreadsheetInterface;
-import spreadsheet.api.value.InvalidValue;
 import spreadsheet.api.value.LoopValue;
 import spreadsheet.api.value.Value;
 import spreadsheet.api.value.ValueVisitor;
@@ -13,6 +12,8 @@ import java.util.*;
 public class Spreadsheet implements SpreadsheetInterface {
     private Map<CellLocation, Cell> cellMap = new HashMap();
     private Set<Cell> toRecompute = new HashSet<>();
+    private Set<Cell> toBeIgnored = new HashSet<>();
+
 
     public void add(Cell cell) {
         toRecompute.add(cell);
@@ -45,14 +46,17 @@ public class Spreadsheet implements SpreadsheetInterface {
 
     @Override
     public void setExpression(CellLocation location, String expression) {
-        Cell temp = cellMap.get(location);
-
-        Cell cell = new Cell(location, this);
+        Cell cell = getCell(location);
         cell.setExpression(expression);
-        //  cell.setValue(new StringValue(expression));
-        cellMap.put(location, cell);
 
 
+    }
+
+    public Cell getCell(CellLocation location) {
+        if (!cellMap.containsKey(location)) {
+            cellMap.put(location, new Cell(location, this));
+        }
+        return cellMap.get(location);
     }
 
     @Override
@@ -67,70 +71,67 @@ public class Spreadsheet implements SpreadsheetInterface {
         while (iterator.hasNext()) {
             Cell c = iterator.next();
             recomputeCell(c);
-            toRecompute.remove(c);
-            if (c.getValue().equals(LoopValue.INSTANCE)) {
-
-            } else if (dependsOnLoop(c)) {
-                c.setValue(new InvalidValue(c.getExpression()));
-            } else {
-                // c.setValue(new StringValue(c.getExpression()));
+            if (!toBeIgnored.contains(c)) {
+                recomputeCell(c);
             }
+            iterator.remove();
         }
+        toBeIgnored.clear();
     }
 
-    private boolean dependsOnLoop(Cell cell) {
+   /* private boolean dependsOnLoop(Cell cell) {
         Iterator<Cell> iterator = cell.getDependsOn().iterator();
         while (iterator.hasNext()) {
             Cell c = iterator.next();
-            if (c.getValue().equals(LoopValue.INSTANCE) || c.getValue().equals(new InvalidValue(c.getExpression()))) {
+            if (c.getValue().equals(LoopValue.INSTANCE)|| c.getValue().equals(new InvalidValue(c.getExpression()))) {
                 System.out.println(c.toString() + "depends on loop");
                 return true;
 
             }
         }
 
-        return false;
-    }
+        return false
+    }*/
 
     private void recomputeCell(Cell c) {
         Deque<Cell> quue = new ArrayDeque<>();
         checkLoops(c, new LinkedHashSet<Cell>());
-        if (!(c.getValue().equals(LoopValue.INSTANCE) || dependsOnLoop(c))) {
+        if (!toBeIgnored.contains(c)) {
             quue.add(c);
-
             while (!quue.isEmpty()) {
-                Cell current = quue.getFirst();
+                Cell current = quue.pollFirst();
+                boolean flag = false;
                 Iterator<Cell> iterator = current.getDependsOn().iterator();
                 while (iterator.hasNext()) {
                     Cell cell = iterator.next();
-                    if (isIn(cell)) {
+                    if (isIn(cell) && !(toBeIgnored.contains(cell))) {
                         quue.addFirst(cell);
-                        recomputeCell(cell);
-                        //quue.addLast(current);
+                        flag = true;
                     }
 
                 }
-                quue.addLast(current);
-                calculateCellValue(current);
-                toRecompute.remove(current);
+                if (flag) {
+                    quue.addLast(current);
+                } else {
+                    calculateCellValue(current);
+                    toBeIgnored.add(current);
+                }
+                // toRecompute.remove(current);
             }
         }
     }
 
-    private void calculateCellValue(Cell cell) {
-        Map<CellLocation, Double> values = new HashMap<>();
+    private void calculateCellValue(final Cell cell) {
+        final Map<CellLocation, Double> values = new HashMap<>();
         Iterator<Cell> iterator = cell.getDependsOn().iterator();
         while (iterator.hasNext()) {
-            Cell c = iterator.next();
-            final boolean[] refbool = new boolean[1];
-            final double[] ref = new double[1];
-            refbool[0] = false;
+            final Cell c = iterator.next();
+
 
             c.getValue().visit(new ValueVisitor() {
                 @Override
                 public void visitDouble(double value) {
-                    refbool[0] = true;
-                    ref[0] = value;
+                    values.put(c.getCellLocation(), value);
 
                 }
 
@@ -146,18 +147,14 @@ public class Spreadsheet implements SpreadsheetInterface {
 
                 @Override
                 public void visitInvalid(String expression) {
+                    //  cell.setValue(new InvalidValue(cell.getExpression()));
 
 
                 }
             });
-            if (refbool[0]) {
-                values.put(c.getCellLocation(), ref[0]);
-
-            }
         }
-
-
-        ExpressionUtils.computeValue(cell.getExpression(), values);
+        Value newvalue = ExpressionUtils.computeValue(cell.getExpression(), values);
+        cell.setValue(newvalue);
     }
 
 
@@ -170,13 +167,12 @@ public class Spreadsheet implements SpreadsheetInterface {
                 checkLoops(cell, cellSeen);
             }
             cellSeen.remove(c);
-
         }
     }
 
 
     private void markAsLoop(Cell startCell, LinkedHashSet<Cell> cells) {
-        toRecompute.removeAll(cells);
+        toBeIgnored.addAll(cells);
         boolean flag = false;
         Iterator<Cell> iterator = cells.iterator();
         while (iterator.hasNext()) {

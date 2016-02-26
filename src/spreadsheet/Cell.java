@@ -99,7 +99,7 @@ public class Cell implements Observer<Cell> {
 
     @Override
     public void update(Cell changed) {
-        if (!spreadsheet.isIn(changed)) {
+        if (!spreadsheet.isIn(this)) {
             spreadsheet.add(this);
             this.setValue(new InvalidValue(this.expression));
             for (Observer<Cell> cell : observers) {

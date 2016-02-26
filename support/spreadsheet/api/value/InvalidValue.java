@@ -12,22 +12,7 @@ public final class InvalidValue implements Value {
         this.expression = expression;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-
-        InvalidValue that = (InvalidValue) o;
-
-        return expression != null ? expression.equals(that.expression) : that.expression == null;
-
-    }
-
-    @Override
-    public int hashCode() {
-        return expression != null ? expression.hashCode() : 0;
-    }
-
+  
     @Override
     public void visit(ValueVisitor visitor) {
         visitor.visitInvalid(expression);
